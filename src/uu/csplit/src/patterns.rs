@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn bad_pattern() {
-        let input = vec!["bad".to_string()];
+        let input = vec!["bad".to_owned()];
         assert!(get_patterns(input.as_slice()).is_err());
     }
 
@@ -193,7 +193,7 @@ mod tests {
     fn up_to_line_pattern() {
         let input: Vec<String> = vec!["24", "42", "{*}", "50", "{4}"]
             .into_iter()
-            .map(|v| v.to_string())
+            .map(|v| v.to_owned())
             .collect();
         let patterns = get_patterns(input.as_slice()).unwrap();
         assert_eq!(patterns.len(), 3);
@@ -225,7 +225,7 @@ mod tests {
             "/test6.*end$/-3",
         ]
         .into_iter()
-        .map(|v| v.to_string())
+        .map(|v| v.to_owned())
         .collect();
         let patterns = get_patterns(input.as_slice()).unwrap();
         assert_eq!(patterns.len(), 6);
@@ -287,7 +287,7 @@ mod tests {
             "%test6.*end$%-3",
         ]
         .into_iter()
-        .map(|v| v.to_string())
+        .map(|v| v.to_owned())
         .collect();
         let patterns = get_patterns(input.as_slice()).unwrap();
         assert_eq!(patterns.len(), 6);
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn line_number_smaller_than_previous() {
-        let input: Vec<String> = vec!["10".to_string(), "5".to_string()];
+        let input: Vec<String> = vec!["10".to_owned(), "5".to_owned()];
         match get_patterns(input.as_slice()) {
             Err(CsplitError::LineNumberSmallerThanPrevious(5, 10)) => (),
             _ => panic!("expected LineNumberSmallerThanPrevious error"),
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn line_number_smaller_than_previous_separate() {
-        let input: Vec<String> = vec!["10".to_string(), "/20/".to_string(), "5".to_string()];
+        let input: Vec<String> = vec!["10".to_owned(), "/20/".to_owned(), "5".to_owned()];
         match get_patterns(input.as_slice()) {
             Err(CsplitError::LineNumberSmallerThanPrevious(5, 10)) => (),
             _ => panic!("expected LineNumberSmallerThanPrevious error"),
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn line_number_zero_separate() {
-        let input: Vec<String> = vec!["10".to_string(), "/20/".to_string(), "0".to_string()];
+        let input: Vec<String> = vec!["10".to_owned(), "/20/".to_owned(), "0".to_owned()];
         match get_patterns(input.as_slice()) {
             Err(CsplitError::LineNumberIsZero) => (),
             _ => panic!("expected LineNumberIsZero error"),

@@ -114,7 +114,7 @@ impl AlgoKind {
             ALGORITHM_OPTIONS_SHA256 => Sha256,
             ALGORITHM_OPTIONS_SHA384 => Sha384,
             ALGORITHM_OPTIONS_SHA512 => Sha512,
-            _ => return Err(ChecksumError::UnknownAlgorithm(algo.as_ref().to_string()).into()),
+            _ => return Err(ChecksumError::UnknownAlgorithm(algo.as_ref().to_owned()).into()),
         })
     }
 
@@ -131,7 +131,7 @@ impl AlgoKind {
             "sha3sum" => Sha3,
             "b2sum" => Blake2b,
 
-            _ => return Err(ChecksumError::UnknownAlgorithm(algo.as_ref().to_string()).into()),
+            _ => return Err(ChecksumError::UnknownAlgorithm(algo.as_ref().to_owned()).into()),
         })
     }
 

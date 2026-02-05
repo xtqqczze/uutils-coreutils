@@ -57,7 +57,7 @@ mod platform {
     /// Logs a warning if fcntl fails but doesn't abort the operation.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn open_and_reset_nonblock(path: &str) -> UResult<File> {
-        let f = File::open(path).map_err_context(|| path.to_string())?;
+        let f = File::open(path).map_err_context(|| path.to_owned())?;
         // Reset O_NONBLOCK flag if it was set (matches GNU behavior)
         // This is non-critical, so we log errors but don't fail
         if let Err(e) = fcntl(&f, FcntlArg::F_SETFL(OFlag::empty())) {

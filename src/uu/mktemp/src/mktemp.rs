@@ -221,7 +221,7 @@ impl Params {
 
         // The template argument must end in 'X' if a suffix option is given.
         if options.suffix.is_some() && !template_str.ends_with('X') {
-            return Err(MkTempError::MustEndInX(template_str.to_string()));
+            return Err(MkTempError::MustEndInX(template_str.to_owned()));
         }
 
         // Get the start and end indices of the randomized part of the template.
@@ -234,7 +234,7 @@ impl Params {
                     .chars()
                     .take(template_str.len())
                     .collect::<String>(),
-                None => template_str.to_string(),
+                None => template_str.to_owned(),
             };
             return Err(MkTempError::TooFewXs(s));
         };
@@ -249,7 +249,7 @@ impl Params {
         let prefix_path = Path::new(&prefix_from_option).join(prefix_from_template);
         if options.treat_as_template && prefix_from_template.contains(MAIN_SEPARATOR) {
             return Err(MkTempError::PrefixContainsDirSeparator(
-                template_str.to_string(),
+                template_str.to_owned(),
             ));
         }
         if tmpdir.is_some() && Path::new(prefix_from_template).is_absolute() {
@@ -271,7 +271,7 @@ impl Params {
                 };
                 let prefix = match prefix_path.file_name() {
                     None => String::new(),
-                    Some(f) => f.to_str().unwrap().to_string(),
+                    Some(f) => f.to_str().unwrap().to_owned(),
                 };
                 (directory, prefix)
             }

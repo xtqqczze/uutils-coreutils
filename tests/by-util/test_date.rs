@@ -1948,7 +1948,7 @@ fn check_date(locale: &str, date: &str, fmt: &str, expected: &str) {
         .succeeds()
         .stdout_str()
         .trim()
-        .to_string();
+        .to_owned();
     assert_eq!(actual, expected, "LC_ALL={locale} date -d '{date}' '{fmt}'");
 }
 

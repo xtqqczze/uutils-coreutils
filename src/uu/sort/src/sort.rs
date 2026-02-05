@@ -1559,7 +1559,7 @@ fn parse_legacy_part(spec: &str) -> Option<LegacyKeyPart> {
     Some(LegacyKeyPart {
         field,
         char_pos,
-        opts: rest.to_string(),
+        opts: rest.to_owned(),
     })
 }
 
@@ -2096,7 +2096,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         // "0" is default - threads = num of cores
         settings.threads = matches
             .get_one::<String>(options::PARALLEL)
-            .map_or_else(|| "0".to_string(), String::from);
+            .map_or_else(|| "0".to_owned(), String::from);
         let num_threads = match settings.threads.parse::<usize>() {
             Ok(0) | Err(_) => std::thread::available_parallelism().map_or(1, NonZero::get),
             Ok(n) => n,
@@ -3089,7 +3089,7 @@ mod tests {
 
     #[test]
     fn test_get_hash() {
-        let a = "Ted".to_string();
+        let a = "Ted".to_owned();
 
         assert_eq!(2_646_829_031_758_483_623, get_hash(&a));
     }

@@ -399,7 +399,7 @@ fn behavior(matches: &ArgMatches) -> UResult<Behavior> {
     let owner = matches
         .get_one::<String>(OPT_OWNER)
         .map_or("", |s| s.as_str())
-        .to_string();
+        .to_owned();
 
     let owner_id = if owner.is_empty() {
         None
@@ -413,7 +413,7 @@ fn behavior(matches: &ArgMatches) -> UResult<Behavior> {
     let group = matches
         .get_one::<String>(OPT_GROUP)
         .map_or("", |s| s.as_str())
-        .to_string();
+        .to_owned();
 
     let group_id = if group.is_empty() {
         None
@@ -1269,7 +1269,7 @@ fn derive_context_from_parent(parent_context: &str) -> String {
         }
     } else {
         // Fallback if we can't parse the parent context
-        parent_context.to_string()
+        parent_context.to_owned()
     }
 }
 
