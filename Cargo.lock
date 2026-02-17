@@ -3814,6 +3814,7 @@ dependencies = [
 name = "uu_mkdir"
 version = "0.9.0"
 dependencies = [
+ "cfg_aliases",
  "clap",
  "fluent",
  "rustix",
