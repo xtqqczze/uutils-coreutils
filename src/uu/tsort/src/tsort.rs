@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::collections::hash_map::Entry;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use string_interner::StringInterner;
 use string_interner::backend::BucketBackend;
 use thiserror::Error;
@@ -102,7 +102,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         process_input(reader, &mut g)?;
     }
 
-    g.run_tsort();
+    g.run_tsort()?;
     Ok(())
 }
 
@@ -276,7 +276,7 @@ impl Graph {
     }
 
     /// Implementation of algorithm T from TAOCP (Don. Knuth), vol. 1.
-    fn run_tsort(&mut self) {
+    fn run_tsort(&mut self) -> UResult<()> {
         let mut independent_nodes_queue: VecDeque<Sym> = self
             .nodes
             .iter()
@@ -289,6 +289,10 @@ impl Graph {
             })
             .collect();
 
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+        let mut write_error: Option<io::Error> = None;
+
         // Sort by resolved string for deterministic output
         independent_nodes_queue
             .make_contiguous()
@@ -296,7 +300,14 @@ impl Graph {
 
         while !self.nodes.is_empty() {
             let v = self.find_next_node(&mut independent_nodes_queue);
-            println!("{}", self.get_node_name(v));
+            
+            // Attempt write but continue regardless on error
+            if write_error.is_none() {
+                if let Err(e) = writeln!(handle, "{}", self.get_node_name(v)) {
+                    write_error = Some(e);
+                }
+            }
+            
             if let Some(node_to_process) = self.nodes.remove(&v) {
                 for successor_name in node_to_process.successor_tokens.into_iter().rev() {
                     // we reverse to match GNU tsort order
@@ -311,6 +322,13 @@ impl Graph {
                 }
             }
         }
+
+        if let Some(e) = write_error {
+            eprintln!("write error: {e}");
+            return Err(USimpleError::new(1, "write error"));
+        }
+        
+        Ok(())
     }
     pub fn indegree(&self, sym: Sym) -> Option<usize> {
         self.nodes.get(&sym).map(|data| data.predecessor_count)
