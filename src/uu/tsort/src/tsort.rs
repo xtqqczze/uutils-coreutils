@@ -300,14 +300,14 @@ impl Graph {
 
         while !self.nodes.is_empty() {
             let v = self.find_next_node(&mut independent_nodes_queue);
-            
+
             // Attempt write but continue regardless on error
             if write_error.is_none() {
                 if let Err(e) = writeln!(handle, "{}", self.get_node_name(v)) {
                     write_error = Some(e);
                 }
             }
-            
+
             if let Some(node_to_process) = self.nodes.remove(&v) {
                 for successor_name in node_to_process.successor_tokens.into_iter().rev() {
                     // we reverse to match GNU tsort order
@@ -327,7 +327,7 @@ impl Graph {
             eprintln!("write error: {e}");
             return Err(USimpleError::new(1, "write error"));
         }
-        
+
         Ok(())
     }
     pub fn indegree(&self, sym: Sym) -> Option<usize> {
