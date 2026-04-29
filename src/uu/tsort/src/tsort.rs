@@ -102,7 +102,7 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         process_input(reader, &mut g)?;
     }
 
-    g.run_tsort()?;
+    g.run_tsort().map_err(|e| USimpleError::new(1, format!("write error: {e}")))?;
     Ok(())
 }
 
