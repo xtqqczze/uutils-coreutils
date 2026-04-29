@@ -276,7 +276,7 @@ impl Graph {
     }
 
     /// Implementation of algorithm T from TAOCP (Don. Knuth), vol. 1.
-    fn run_tsort(&mut self) -> UResult<()> {
+    fn run_tsort(&mut self) -> io::Result<()> {
         let mut independent_nodes_queue: VecDeque<Sym> = self
             .nodes
             .iter()
@@ -291,7 +291,7 @@ impl Graph {
 
         let stdout = io::stdout();
         let mut handle = stdout.lock();
-        let mut write_error: Option<io::Error> = None;
+        let mut res: io::Result<()> = Ok(());
 
         // Sort by resolved string for deterministic output
         independent_nodes_queue
@@ -302,10 +302,8 @@ impl Graph {
             let v = self.find_next_node(&mut independent_nodes_queue);
 
             // Attempt write but continue regardless on error
-            if write_error.is_none() {
-                if let Err(e) = writeln!(handle, "{}", self.get_node_name(v)) {
-                    write_error = Some(e);
-                }
+            if res.is_ok() {
+                res = writeln!(handle, "{}", self.get_node_name(v));
             }
 
             if let Some(node_to_process) = self.nodes.remove(&v) {
@@ -323,12 +321,7 @@ impl Graph {
             }
         }
 
-        if let Some(e) = write_error {
-            let _ = writeln!(io::stderr(), "write error: {e}");
-            return Err(USimpleError::new(1, "write error"));
-        }
-
-        Ok(())
+        res
     }
     pub fn indegree(&self, sym: Sym) -> Option<usize> {
         self.nodes.get(&sym).map(|data| data.predecessor_count)
