@@ -324,7 +324,7 @@ impl Graph {
         }
 
         if let Some(e) = write_error {
-            eprintln!("write error: {e}");
+            let _ = writeln!(io::stderr(), "write error: {e}");
             return Err(USimpleError::new(1, "write error"));
         }
 
