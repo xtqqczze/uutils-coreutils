@@ -254,6 +254,24 @@ enum Writer {
     Stdout(std::io::Stdout),
 }
 
+#[cfg(unix)]
+impl Write for Writer {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        // raw syscall avoids buffering which is POSIX requirement
+        // better throughput by unknown reason...
+        use rustix::io::write;
+        match self {
+            Self::File(f) => Ok(write(f, buf)?),
+            Self::Stdout(s) => Ok(write(s, buf)?),
+        }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(not(unix))] // todo: investigate how to improve throughput
 impl Write for Writer {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         match self {

@@ -24,7 +24,7 @@ clap = { workspace = true }
 uucore = { workspace = true, features = ["libc", "parser", "signals"] }
 fluent = { workspace = true }
 
-[target.'cfg(unix)'.dev-dependencies]
+[target.'cfg(unix)'.dependencies]
 rustix = { workspace = true }
 
 [[bin]]
