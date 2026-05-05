@@ -198,7 +198,7 @@ impl MultiWriter {
     fn write_flush(&mut self, buf: &[u8]) -> Result<()> {
         let mode = self.output_error_mode;
         self.writers
-            .retain_mut(|writer| match writer.inner.write_all(buf) {
+            .retain_mut(|writer| match writer.inner.write(buf) {
                 Ok(()) => true,
                 Err(e) => {
                     if let Err(e) = process_error(mode, e, writer, &mut self.ignored_errors) {
@@ -250,25 +250,19 @@ enum Writer {
 }
 
 #[cfg(unix)]
-impl Write for Writer {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        // raw syscall avoids buffering which is POSIX requirement
-        // better throughput by unknown reason...
+impl Writer {
+    fn write(&mut self, buf: &[u8]) -> Result<()> {
         match self {
-            Self::File(f) => Ok(rustix::io::write(f, buf)?),
-            Self::Stdout(s) => Ok(rustix::io::write(s, buf)?),
-        }
-    }
-
-    fn flush(&mut self) -> Result<()> {
+            Self::File(f) => rustix::io::write(f, buf)?,
+            Self::Stdout(s) => rustix::io::write(s, buf)?,
+        };
         Ok(())
     }
 }
 
 #[cfg(not(unix))] // todo: investigate how to remove flush overhead
 impl Writer {
-    // override write_all to avoid calling many flush
-    pub fn write_all(&mut self, buf: &[u8]) -> Result<()> {
+    fn write(&mut self, buf: &[u8]) -> Result<()> {
         match self {
             // File does not have line buffering
             Self::File(f) => f.write_all(buf),
