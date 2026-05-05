@@ -197,12 +197,8 @@ impl MultiWriter {
 
     fn write_flush(&mut self, buf: &[u8]) -> Result<()> {
         let mode = self.output_error_mode;
-        self.writers.retain_mut(|writer| {
-            let res = (|| {
-                writer.inner.write_all(buf)?;
-                writer.inner.flush()
-            })();
-            match res {
+        self.writers
+            .retain_mut(|writer| match writer.inner.write_all(buf) {
                 Ok(()) => true,
                 Err(e) => {
                     if let Err(e) = process_error(mode, e, writer, &mut self.ignored_errors) {
@@ -210,8 +206,7 @@ impl MultiWriter {
                     }
                     false
                 }
-            }
-        });
+            });
         self.aborted.take().map_or(
             if self.writers.is_empty() {
                 // This error kind will never be raised by the standard
@@ -259,10 +254,9 @@ impl Write for Writer {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         // raw syscall avoids buffering which is POSIX requirement
         // better throughput by unknown reason...
-        use rustix::io::write;
         match self {
-            Self::File(f) => Ok(write(f, buf)?),
-            Self::Stdout(s) => Ok(write(s, buf)?),
+            Self::File(f) => Ok(rustix::io::write(f, buf)?),
+            Self::Stdout(s) => Ok(rustix::io::write(s, buf)?),
         }
     }
 
@@ -271,19 +265,17 @@ impl Write for Writer {
     }
 }
 
-#[cfg(not(unix))] // todo: investigate how to improve throughput
-impl Write for Writer {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+#[cfg(not(unix))] // todo: investigate how to remove flush overhead
+impl Writer {
+    // override write_all to avoid calling many flush
+    pub fn write_all(&mut self, buf: &[u8]) -> Result<()> {
         match self {
-            Self::File(f) => f.write(buf),
-            Self::Stdout(s) => s.write(buf),
-        }
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        match self {
-            Self::File(f) => f.flush(),
-            Self::Stdout(s) => s.flush(),
+            // File does not have line buffering
+            Self::File(f) => f.write_all(buf),
+            Self::Stdout(s) => {
+                s.write_all(buf)?;
+                s.flush()
+            }
         }
     }
 }
