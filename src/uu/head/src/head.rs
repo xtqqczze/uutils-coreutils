@@ -24,8 +24,10 @@ use uucore::translate;
 const BUF_SIZE: usize = 65536;
 
 mod cli;
+mod tagged;
 use crate::cli::options;
 pub use crate::cli::uu_app;
+use crate::tagged::{IoError, Reader, Writer};
 
 mod parse;
 mod take;
@@ -50,11 +52,26 @@ enum HeadError {
 
     #[error("{0}")]
     MatchOption(String),
+
+    #[error("read error: {}", 0)]
+    Read(io::Error),
+
+    #[error("write error: {}", 0)]
+    Write(io::Error),
 }
 
 impl UError for HeadError {
     fn code(&self) -> i32 {
         1
+    }
+}
+
+impl From<IoError> for HeadError {
+    fn from(err: IoError) -> Self {
+        match err {
+            IoError::Read(e) => Self::Read(e),
+            IoError::Write(e) => Self::Write(e),
+        }
     }
 }
 
@@ -159,10 +176,10 @@ impl HeadOptions {
 }
 
 #[inline]
-fn wrap_in_stdout_error(err: io::Error) -> io::Error {
+fn wrap_in_stdout_error(err: &io::Error) -> io::Error {
     io::Error::new(
         err.kind(),
-        translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(&err)),
+        translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(err)),
     )
 }
 
@@ -185,29 +202,46 @@ fn print_n_bytes(input: impl Read, n: u64) -> io::Result<u64> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
-    let bytes_written = io::copy(&mut reader, &mut stdout).map_err(wrap_in_stdout_error)?;
+    let bytes_written = *io::copy(&mut reader, &mut stdout)
+        .as_ref()
+        .map_err(wrap_in_stdout_error)?;
 
     // flush prevents ignoring I/O error
-    stdout.flush().map_err(wrap_in_stdout_error)?;
+    stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
 
     Ok(bytes_written)
 }
 
 fn print_n_lines(input: &mut impl io::BufRead, n: u64, separator: u8) -> io::Result<u64> {
     // Read the first `n` lines from the `input` reader.
-    let mut reader = take_lines(input, n, separator);
-
+    let mut reader = Reader::from(take_lines(input, n, separator));
     // Write those bytes to `stdout`.
     let stdout = io::stdout();
     let stdout = stdout.lock();
-    let mut writer = BufWriter::with_capacity(BUF_SIZE, stdout);
+    let mut writer = Writer::from(BufWriter::with_capacity(BUF_SIZE, stdout));
 
-    let bytes_written = io::copy(&mut reader, &mut writer).map_err(wrap_in_stdout_error)?;
+    let bytes_written = match io::copy(&mut reader, &mut writer) {
+        Ok(n) => n,
+
+        Err(err) => {
+            if let Some(tagged) = err.get_ref().and_then(|e| e.downcast_ref::<IoError>()) {
+                match tagged {
+                    IoError::Read(e) => {
+                        return Err(wrap_in_stdout_error(e));
+                    }
+                    IoError::Write(e) => {
+                        return Err(wrap_in_stdout_error(e));
+                    }
+                }
+            }
+            return Err(err);
+        }
+    };
 
     // Make sure we finish writing everything to the target before
     // exiting. Otherwise, when Rust is implicitly flushing, any
     // error will be silently ignored.
-    writer.flush().map_err(wrap_in_stdout_error)?;
+    writer.flush().as_ref().map_err(wrap_in_stdout_error)?;
 
     Ok(bytes_written)
 }
@@ -222,15 +256,16 @@ fn print_but_last_n_bytes(mut input: impl Read, n: u64) -> io::Result<u64> {
         let stdout = io::stdout();
         let mut stdout = stdout.lock();
 
-        bytes_written = copy_all_but_n_bytes(&mut input, &mut stdout, n)
-            .map_err(wrap_in_stdout_error)?
-            .try_into()
-            .unwrap();
+        bytes_written = (*copy_all_but_n_bytes(&mut input, &mut stdout, n)
+            .as_ref()
+            .map_err(wrap_in_stdout_error)?)
+        .try_into()
+        .unwrap();
 
         // Make sure we finish writing everything to the target before
         // exiting. Otherwise, when Rust is implicitly flushing, any
         // error will be silently ignored.
-        stdout.flush().map_err(wrap_in_stdout_error)?;
+        stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
     }
     Ok(bytes_written)
 }
@@ -239,18 +274,21 @@ fn print_but_last_n_lines(mut input: impl Read, n: u64, separator: u8) -> io::Re
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     if n == 0 {
-        return io::copy(&mut input, &mut stdout).map_err(wrap_in_stdout_error);
+        return Ok(*io::copy(&mut input, &mut stdout)
+            .as_ref()
+            .map_err(wrap_in_stdout_error)?);
     }
     let mut bytes_written: u64 = 0;
     if let Some(n) = catch_too_large_numbers_in_backwards_bytes_or_lines(n) {
-        bytes_written = copy_all_but_n_lines(input, &mut stdout, n, separator)
-            .map_err(wrap_in_stdout_error)?
-            .try_into()
-            .unwrap();
+        bytes_written = (*copy_all_but_n_lines(input, &mut stdout, n, separator)
+            .as_ref()
+            .map_err(wrap_in_stdout_error)?)
+        .try_into()
+        .unwrap();
         // Make sure we finish writing everything to the target before
         // exiting. Otherwise, when Rust is implicitly flushing, any
         // error will be silently ignored.
-        stdout.flush().map_err(wrap_in_stdout_error)?;
+        stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
     }
     Ok(bytes_written)
 }
