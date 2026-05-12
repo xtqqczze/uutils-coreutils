@@ -47,3 +47,7 @@ uucore = { workspace = true, features = ["benchmark"] }
 [[bench]]
 name = "dd_bench"
 harness = false
+
+[build-dependencies]
+rsconf = { workspace = true }
+rustc_version = { workspace = true }
