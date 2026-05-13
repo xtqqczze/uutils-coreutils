@@ -3,9 +3,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub(crate) enum IoError {
-    #[error("read error: {}", _0)]
+    #[error("{0}")]
     Read(io::Error),
-    #[error("write error: {}", _0)]
+    #[error("{0}")]
     Write(io::Error),
 }
 
@@ -49,4 +49,12 @@ impl<W: Write> Write for Writer<W> {
             .flush()
             .map_err(|e| io::Error::new(e.kind(), IoError::Write(e)))
     }
+}
+
+pub fn copy<R, W>(reader: &mut R, writer: &mut W) -> io::Result<u64>
+where
+    R: Read + ?Sized,
+    W: Write + ?Sized,
+{
+    io::copy(&mut Reader::from(reader), &mut Writer::from(writer))
 }

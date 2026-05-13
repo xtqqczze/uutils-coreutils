@@ -53,11 +53,13 @@ enum HeadError {
     #[error("{0}")]
     MatchOption(String),
 
-    #[error("read error: {}", 0)]
+    #[error("{}", translate!("head-error-reading-file", "name" => "-", "err" => uucore::error::strip_errno(_0)))]
     Read(io::Error),
 
-    #[error("write error: {}", 0)]
+    #[error("{}", translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(_0)))]
     Write(io::Error),
+    // #[error("io error: {}", 0)]
+    // FromIo(#[from] io::Error),
 }
 
 impl UError for HeadError {
@@ -175,21 +177,13 @@ impl HeadOptions {
     }
 }
 
-#[inline]
-fn wrap_in_stdout_error(err: &io::Error) -> io::Error {
-    io::Error::new(
-        err.kind(),
-        translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(err)),
-    )
-}
-
 // zero-copy fast-path
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn print_n_bytes(input: impl Read + AsFd, n: u64) -> io::Result<u64> {
     let mut out = io::stdout();
-    let res = uucore::pipes::send_n_bytes(input, &out, n).map_err(wrap_in_stdout_error);
+    let res = uucore::pipes::send_n_bytes(input, &out, n);
     // flush prevents ignoring I/O error
-    out.flush().map_err(wrap_in_stdout_error)?;
+    out.flush()?;
     res
 }
 
@@ -202,12 +196,10 @@ fn print_n_bytes(input: impl Read, n: u64) -> io::Result<u64> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
-    let bytes_written = *io::copy(&mut reader, &mut stdout)
-        .as_ref()
-        .map_err(wrap_in_stdout_error)?;
+    let bytes_written = tagged::copy(&mut reader, &mut stdout)?;
 
     // flush prevents ignoring I/O error
-    stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
+    stdout.flush()?;
 
     Ok(bytes_written)
 }
@@ -220,28 +212,12 @@ fn print_n_lines(input: &mut impl io::BufRead, n: u64, separator: u8) -> io::Res
     let stdout = stdout.lock();
     let mut writer = Writer::from(BufWriter::with_capacity(BUF_SIZE, stdout));
 
-    let bytes_written = match io::copy(&mut reader, &mut writer) {
-        Ok(n) => n,
-
-        Err(err) => {
-            if let Some(tagged) = err.get_ref().and_then(|e| e.downcast_ref::<IoError>()) {
-                match tagged {
-                    IoError::Read(e) => {
-                        return Err(wrap_in_stdout_error(e));
-                    }
-                    IoError::Write(e) => {
-                        return Err(wrap_in_stdout_error(e));
-                    }
-                }
-            }
-            return Err(err);
-        }
-    };
+    let bytes_written = tagged::copy(&mut reader, &mut writer)?;
 
     // Make sure we finish writing everything to the target before
     // exiting. Otherwise, when Rust is implicitly flushing, any
     // error will be silently ignored.
-    writer.flush().as_ref().map_err(wrap_in_stdout_error)?;
+    writer.flush()?;
 
     Ok(bytes_written)
 }
@@ -256,16 +232,14 @@ fn print_but_last_n_bytes(mut input: impl Read, n: u64) -> io::Result<u64> {
         let stdout = io::stdout();
         let mut stdout = stdout.lock();
 
-        bytes_written = (*copy_all_but_n_bytes(&mut input, &mut stdout, n)
-            .as_ref()
-            .map_err(wrap_in_stdout_error)?)
-        .try_into()
-        .unwrap();
+        bytes_written = copy_all_but_n_bytes(&mut input, &mut stdout, n)?
+            .try_into()
+            .unwrap();
 
         // Make sure we finish writing everything to the target before
         // exiting. Otherwise, when Rust is implicitly flushing, any
         // error will be silently ignored.
-        stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
+        stdout.flush()?;
     }
     Ok(bytes_written)
 }
@@ -274,21 +248,17 @@ fn print_but_last_n_lines(mut input: impl Read, n: u64, separator: u8) -> io::Re
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     if n == 0 {
-        return Ok(*io::copy(&mut input, &mut stdout)
-            .as_ref()
-            .map_err(wrap_in_stdout_error)?);
+        return tagged::copy(&mut input, &mut stdout);
     }
     let mut bytes_written: u64 = 0;
     if let Some(n) = catch_too_large_numbers_in_backwards_bytes_or_lines(n) {
-        bytes_written = (*copy_all_but_n_lines(input, &mut stdout, n, separator)
-            .as_ref()
-            .map_err(wrap_in_stdout_error)?)
-        .try_into()
-        .unwrap();
+        bytes_written = copy_all_but_n_lines(input, &mut stdout, n, separator)?
+            .try_into()
+            .unwrap();
         // Make sure we finish writing everything to the target before
         // exiting. Otherwise, when Rust is implicitly flushing, any
         // error will be silently ignored.
-        stdout.flush().as_ref().map_err(wrap_in_stdout_error)?;
+        stdout.flush()?;
     }
     Ok(bytes_written)
 }
@@ -427,7 +397,7 @@ fn head_backwards_on_seekable_file(input: &mut File, options: &HeadOptions) -> i
 }
 
 fn head_file(input: &mut File, options: &HeadOptions) -> io::Result<u64> {
-    match options.mode {
+    let res = match options.mode {
         Mode::FirstBytes(n) => print_n_bytes(input, n),
         Mode::FirstLines(n) => print_n_lines(
             &mut io::BufReader::with_capacity(BUF_SIZE, input),
@@ -435,7 +405,27 @@ fn head_file(input: &mut File, options: &HeadOptions) -> io::Result<u64> {
             options.line_ending.into(),
         ),
         Mode::AllButLastBytes(_) | Mode::AllButLastLines(_) => head_backwards_file(input, options),
-    }
+    };
+
+    res.map_err(|err| {
+        if let Some(tagged) = err.get_ref().and_then(|e| e.downcast_ref::<IoError>()) {
+            match tagged {
+                IoError::Read(e) => io::Error::new(
+                    err.kind(),
+                    translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(e)),
+                ),
+                IoError::Write(e) => io::Error::new(
+                    err.kind(),
+                    translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(e)),
+                ),
+            }
+        } else {
+            io::Error::new(
+                err.kind(),
+                translate!("head-error-writing-stdout", "err" => uucore::error::strip_errno(&err)),
+            )
+        }
+    })
 }
 
 #[allow(clippy::cognitive_complexity)]
@@ -556,7 +546,8 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
     let args: Vec<_> = arg_iterate(args)?.collect();
     let matches = uucore::clap_localization::handle_clap_result(uu_app(), args)?;
     let options = HeadOptions::get_from(&matches).map_err(HeadError::MatchOption)?;
-    uu_head(&options)
+    uu_head(&options)?;
+    Ok(())
 }
 
 #[cfg(test)]
