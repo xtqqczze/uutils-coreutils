@@ -27,7 +27,7 @@ mod cli;
 mod tagged;
 use crate::cli::options;
 pub use crate::cli::uu_app;
-use crate::tagged::{IoError, Reader, Writer};
+use crate::tagged::{Reader, Writer};
 
 mod parse;
 mod take;
@@ -65,15 +65,6 @@ enum HeadError {
 impl UError for HeadError {
     fn code(&self) -> i32 {
         1
-    }
-}
-
-impl From<IoError> for HeadError {
-    fn from(err: IoError) -> Self {
-        match err {
-            IoError::Read(e) => Self::Read(e),
-            IoError::Write(e) => Self::Write(e),
-        }
     }
 }
 

@@ -1,13 +1,13 @@
 use std::io::{self, Read, Write};
-use thiserror::Error;
+use uucore::error::strip_errno;
 
-#[derive(Debug, Error)]
-pub(crate) enum IoError {
-    #[error("read error: {0}")]
-    Read(io::Error),
-    #[error("write error: {0}")]
-    Write(io::Error),
-}
+#[derive(Debug, thiserror::Error)]
+#[error("{}", strip_errno(_0))]
+pub(crate) struct ReadError(io::Error);
+
+#[derive(Debug, thiserror::Error)]
+#[error("{}", strip_errno(_0))]
+pub(crate) struct WriteError(io::Error);
 
 pub(crate) struct Reader<R> {
     inner: R,
@@ -23,31 +23,29 @@ impl<R: Read> Read for Reader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner
             .read(buf)
-            .map_err(|e| io::Error::new(e.kind(), IoError::Read(e)))
+            .map_err(|e| io::Error::new(e.kind(), ReadError(e)))
     }
 }
 
-pub(crate) struct Writer<W> {
-    inner: W,
-}
+pub(crate) struct Writer<W>(W);
 
 impl<W> From<W> for Writer<W> {
-    fn from(inner: W) -> Self {
-        Self { inner }
+    fn from(value: W) -> Self {
+        Self(value)
     }
 }
 
 impl<W: Write> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner
+        self.0
             .write(buf)
-            .map_err(|e| io::Error::new(e.kind(), IoError::Write(e)))
+            .map_err(|e| io::Error::new(e.kind(), WriteError(e)))
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.inner
+        self.0
             .flush()
-            .map_err(|e| io::Error::new(e.kind(), IoError::Write(e)))
+            .map_err(|e| io::Error::new(e.kind(), WriteError(e)))
     }
 }
 
@@ -68,7 +66,10 @@ mod tests {
 
     impl Read for FailReader {
         fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
-            Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+            Err(Error::new(
+                ErrorKind::BrokenPipe,
+                Error::from_raw_os_error(32),
+            ))
         }
     }
 
@@ -76,11 +77,17 @@ mod tests {
 
     impl Write for FailWriter {
         fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
-            Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+            Err(Error::new(
+                ErrorKind::BrokenPipe,
+                Error::from_raw_os_error(32),
+            ))
         }
 
         fn flush(&mut self) -> io::Result<()> {
-            Err(Error::new(ErrorKind::BrokenPipe, "broken pipe"))
+            Err(Error::new(
+                ErrorKind::BrokenPipe,
+                Error::from_raw_os_error(32),
+            ))
         }
     }
 
@@ -90,10 +97,11 @@ mod tests {
         let mut buffer = [0u8; 1];
         let err = reader.read(&mut buffer).unwrap_err();
 
+        assert_eq!(err.raw_os_error(), Some(32));
         assert_eq!(err.kind(), ErrorKind::BrokenPipe);
-        assert!(err.to_string().contains("read error: broken pipe"));
-        let inner = err.get_ref().and_then(|e| e.downcast_ref::<IoError>());
-        assert!(matches!(inner, Some(IoError::Read(_))));
+        assert_eq!(err.to_string(), "Broken pipe");
+        let inner = err.get_ref().and_then(|e| e.downcast_ref::<ReadError>());
+        assert!(matches!(inner, Some(ReadError(_))));
     }
 
     #[test]
@@ -102,9 +110,9 @@ mod tests {
         let err = writer.write(b"hello").unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::BrokenPipe);
-        assert!(err.to_string().contains("write error: broken pipe"));
-        let inner = err.get_ref().and_then(|e| e.downcast_ref::<IoError>());
-        assert!(matches!(inner, Some(IoError::Write(_))));
+        assert_eq!(err.to_string(), "Broken pipe");
+        let inner = err.get_ref().and_then(|e| e.downcast_ref::<WriteError>());
+        assert!(matches!(inner, Some(WriteError(_))));
     }
 
     #[test]
@@ -113,8 +121,8 @@ mod tests {
         let err = writer.flush().unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::BrokenPipe);
-        assert!(err.to_string().contains("write error: broken pipe"));
-        let inner = err.get_ref().and_then(|e| e.downcast_ref::<IoError>());
-        assert!(matches!(inner, Some(IoError::Write(_))));
+        assert_eq!(err.to_string(), "Broken pipe");
+        let inner = err.get_ref().and_then(|e| e.downcast_ref::<WriteError>());
+        assert!(matches!(inner, Some(WriteError(_))));
     }
 }
