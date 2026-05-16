@@ -27,25 +27,32 @@ impl<R: Read> Read for Reader<R> {
     }
 }
 
-pub(crate) struct Writer<W>(W);
+pub(crate) enum Writer<W> {
+    Stdout(W),
+    File(W),
+}
 
 impl<W> From<W> for Writer<W> {
     fn from(value: W) -> Self {
-        Self(value)
+        Writer::File(value)
     }
 }
 
 impl<W: Write> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0
-            .write(buf)
-            .map_err(|e| io::Error::new(e.kind(), WriteError(e)))
+        match self {
+            Writer::Stdout(inner) | Writer::File(inner) => inner
+                .write(buf)
+                .map_err(|e| io::Error::new(e.kind(), WriteError(e))),
+        }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.0
-            .flush()
-            .map_err(|e| io::Error::new(e.kind(), WriteError(e)))
+        match self {
+            Writer::Stdout(inner) | Writer::File(inner) => inner
+                .flush()
+                .map_err(|e| io::Error::new(e.kind(), WriteError(e))),
+        }
     }
 }
 
@@ -106,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_writer_wraps_write_errors() {
-        let mut writer = Writer::from(FailWriter);
+        let mut writer = Writer::File(FailWriter);
         let err = writer.write(b"hello").unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::BrokenPipe);
@@ -117,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_writer_wraps_flush_errors() {
-        let mut writer = Writer::from(FailWriter);
+        let mut writer = Writer::File(FailWriter);
         let err = writer.flush().unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::BrokenPipe);
