@@ -59,7 +59,10 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         {
             let input = std::path::Path::new(input);
             if input.is_dir() {
-                return Err(TsortError::IsDir(input.to_string_lossy().to_string()).into());
+                return Err(TsortError::Read(TsortReadError::IsDir(
+                    input.to_string_lossy().to_string(),
+                ))
+                .into());
             }
         }
         let file = File::open(input).map_err_context(|| input.maybe_quote().to_string())?;
@@ -71,7 +74,8 @@ pub fn uumain(args: impl uucore::Args) -> UResult<()> {
         process_input(reader, &mut g)?;
     }
 
-    g.run_tsort()
+    g.run_tsort().map_err(TsortError::from)?;
+    Ok(())
 }
 
 pub fn uu_app() -> Command {
@@ -100,9 +104,9 @@ pub fn uu_app() -> Command {
 }
 
 #[derive(Debug, Error)]
-enum TsortError {
+enum TsortReadError {
     /// The input file is actually a directory.
-    #[error("{input}: {message}", input = .0.maybe_quote(), message = translate!("tsort-error-is-dir"))]
+    #[error("{input}: {read_error}: {message}", input = .0.maybe_quote(), read_error = translate!("common-read-error"), message=translate!("error-is-a-directory-text"))]
     IsDir(String),
 
     /// The number of tokens in the input data is odd.
@@ -112,13 +116,33 @@ enum TsortError {
     #[error("{input}: {message}", input = .0.maybe_quote(), message = translate!("tsort-error-odd"))]
     NumTokensOdd(String),
 
+    /// Wrapper for bubbling up input IO errors.
+    #[error("{message}: {0}", message = translate!("common-read-error"))]
+    IO(#[from] io::Error),
+}
+
+#[derive(Debug, Error)]
+#[error("{message}: {0}", message = translate!("common-write-error"))]
+struct TsortWriteError(Box<dyn UError>);
+
+impl From<io::Error> for TsortWriteError {
+    fn from(error: io::Error) -> Self {
+        Self(error.into())
+    }
+}
+#[derive(Debug, Error)]
+enum TsortError {
+    /// Error while reading input.
+    #[error(transparent)]
+    Read(#[from] TsortReadError),
+
+    /// Error while writing output.
+    #[error(transparent)]
+    Write(#[from] TsortWriteError),
+
     /// The graph contains a cycle.
     #[error("{input}: {message}", input = .0, message = translate!("tsort-error-loop"))]
     Loop(String),
-
-    /// Wrapper for bubbling up IO errors
-    #[error("{0}")]
-    IO(#[from] io::Error),
 }
 
 // Auxiliary struct, just for printing loop nodes via show! macro
@@ -137,13 +161,13 @@ fn process_input<R: BufRead>(reader: R, graph: &mut Graph) -> Result<(), TsortEr
     // with tokens separated by whitespaces
 
     for line in reader.lines() {
-        let line = line.map_err(|e| {
-            if e.kind() == io::ErrorKind::IsADirectory {
-                TsortError::IsDir(graph.name())
-            } else {
-                e.into()
+        let line = match line {
+            Err(e) if e.kind() == io::ErrorKind::IsADirectory => {
+                return Err(TsortReadError::IsDir(graph.name()).into());
             }
-        })?;
+            Err(e) => return Err(TsortReadError::IO(e).into()),
+            Ok(line) => line,
+        };
         for token in line.split_whitespace() {
             // Intern the token and get a Sym
             let token_sym = graph.interner.get_or_intern(token);
@@ -156,7 +180,7 @@ fn process_input<R: BufRead>(reader: R, graph: &mut Graph) -> Result<(), TsortEr
         }
     }
     if pending.is_some() {
-        return Err(TsortError::NumTokensOdd(graph.name()));
+        return Err(TsortReadError::NumTokensOdd(graph.name()).into());
     }
 
     Ok(())
@@ -244,7 +268,7 @@ impl Graph {
     }
 
     /// Implementation of algorithm T from TAOCP (Don. Knuth), vol. 1.
-    fn run_tsort(&mut self) -> UResult<()> {
+    fn run_tsort(&mut self) -> Result<(), TsortWriteError> {
         let mut independent_nodes_queue: VecDeque<Sym> = self
             .nodes
             .iter()
@@ -279,6 +303,7 @@ impl Graph {
                 }
             }
         }
+        out.flush()?;
         Ok(())
     }
     pub fn indegree(&self, sym: Sym) -> Option<usize> {
