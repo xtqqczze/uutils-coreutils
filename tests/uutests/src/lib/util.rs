@@ -17,7 +17,7 @@
 use core::str;
 #[cfg(unix)]
 use libc::mode_t;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "redox")))]
 use nix::pty::OpenptyResult;
 #[cfg(unix)]
 use nix::sys;
@@ -1957,9 +1957,9 @@ impl UCommand {
 
         let mut captured_stdout = None;
         let mut captured_stderr = None;
-        #[cfg(unix)]
+        #[cfg(all(unix, not(target_os = "redox")))]
         let mut stdin_pty: Option<File> = None;
-        #[cfg(not(unix))]
+        #[cfg(not(all(unix, not(target_os = "redox"))))]
         let stdin_pty: Option<File> = None;
         if self.stderr_to_stdout {
             let mut output = CapturedOutput::default();
@@ -1994,7 +1994,7 @@ impl UCommand {
                 .stderr(stderr);
         }
 
-        #[cfg(unix)]
+        #[cfg(all(unix, not(target_os = "redox")))]
         if let Some(simulated_terminal) = &self.terminal_simulation {
             let terminal_size = simulated_terminal.size.unwrap_or(libc::winsize {
                 ws_col: 80,
@@ -2995,7 +2995,7 @@ pub fn whoami() -> String {
 /// - path: The filesystem path to the PTY replica device
 /// - controller: The controller file
 /// - replica: The replica file
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "redox")))]
 pub fn pty_path() -> (String, File, File) {
     use nix::pty::openpty;
     use nix::unistd::ttyname;
