@@ -538,7 +538,6 @@ impl FsMeta for StatFs {
             not(target_env = "musl"),
             not(target_os = "freebsd"),
             not(target_os = "netbsd"),
-            not(target_os = "redox"),
             not(target_os = "cygwin"),
             any(
                 target_arch = "s390x",
@@ -555,8 +554,8 @@ impl FsMeta for StatFs {
             target_os = "netbsd",
             target_os = "illumos",
             target_os = "solaris",
-            target_os = "redox",
             target_os = "cygwin",
+            all(target_os = "redox", target_pointer_width = "64")
         ))]
         return self.f_bsize.try_into().unwrap();
     }
@@ -648,7 +647,12 @@ impl FsMeta for StatFs {
     }
 
     /// The preferred transfer size, which on Linux is `f_bsize`.
-    #[cfg(any(target_os = "aix", target_os = "linux", target_os = "android"))]
+    #[cfg(any(
+        target_os = "aix",
+        target_os = "linux",
+        target_os = "android",
+        target_os = "redox"
+    ))]
     #[allow(clippy::unnecessary_cast)]
     fn io_size(&self) -> u64 {
         self.f_bsize as u64
@@ -668,7 +672,8 @@ impl FsMeta for StatFs {
         target_os = "freebsd",
         target_os = "linux",
         target_os = "android",
-        target_os = "netbsd"
+        target_os = "netbsd",
+        target_os = "redox"
     )))]
     fn io_size(&self) -> u64 {
         self.f_bsize as u64
@@ -718,7 +723,8 @@ impl FsMeta for StatFs {
         target_os = "aix",
         target_os = "freebsd",
         target_os = "netbsd",
-        target_os = "openbsd"
+        target_os = "openbsd",
+        target_os = "redox"
     ))]
     #[allow(clippy::unnecessary_cast)]
     fn namelen(&self) -> u64 {
@@ -732,7 +738,8 @@ impl FsMeta for StatFs {
         target_os = "linux",
         target_os = "android",
         target_os = "netbsd",
-        target_os = "openbsd"
+        target_os = "openbsd",
+        target_os = "redox"
     )))]
     fn namelen(&self) -> u64 {
         self.f_namemax as u64 // spell-checker:disable-line
